@@ -2,21 +2,39 @@ import { Button } from "@/components/ui/button";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { AnnotationLegend } from "@/components/AnnotationLegend";
 import { AnnotationDialog } from "@/components/AnnotationDialog";
-import { ArrowLeft, Plus, Trash2, Edit } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit, Sword, Shield, Clock, Move, Target, AlertTriangle, Check, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useState } from "react";
 import { useVideo } from "@/contexts/VideoContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { useEffect } from "react";
 
 const Review = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { getVideo, addAnnotation, deleteAnnotation } = useVideo();
+  const { getVideo, addAnnotation, updateAnnotation, deleteAnnotation, updateVideo } = useVideo();
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [showAnnotationDialog, setShowAnnotationDialog] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [videoName, setVideoName] = useState('');
+  const [editingAnnotation, setEditingAnnotation] = useState<{
+    id: string;
+    time: number;
+    category: string;
+    text: string;
+  } | null>(null);
 
   const video = getVideo(id || '');
+
+  // Initialize video name
+  useEffect(() => {
+    if (video) {
+      setVideoName(video.name || `vs ${video.opponent}`);
+    }
+  }, [video]);
 
   // show error page if video doesn't exist
   if (!video) {
@@ -33,12 +51,43 @@ const Review = () => {
     );
   }
 
-  const handleAddAnnotation = (annotation: { time: number; category: string; text: string }) => {
-    addAnnotation(video.id, annotation);
+  const handleSaveAnnotation = (annotation: { time: number; category: string; text: string }) => {
+    if (editingAnnotation) {
+      // Editing existing annotation
+      updateAnnotation(video.id, editingAnnotation.id, annotation);
+      setEditingAnnotation(null);
+    } else {
+      // Adding new annotation
+      addAnnotation(video.id, annotation);
+    }
+  };
+
+  const handleEditAnnotation = (annotation: { id: string; time: number; category: string; text: string }) => {
+    setEditingAnnotation(annotation);
+    setShowAnnotationDialog(true);
   };
 
   const handleDeleteAnnotation = (annotationId: string) => {
     deleteAnnotation(video.id, annotationId);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    setShowAnnotationDialog(open);
+    if (!open) {
+      setEditingAnnotation(null);
+    }
+  };
+
+  const handleSaveName = () => {
+    if (videoName.trim() && video) {
+      updateVideo(video.id, { name: videoName.trim() });
+      setIsEditingName(false);
+    }
+  };
+
+  const handleCancelNameEdit = () => {
+    setVideoName(video?.name || `vs ${video?.opponent}`);
+    setIsEditingName(false);
   };
 
   // color for annotation sidebar
@@ -49,6 +98,16 @@ const Review = () => {
     distance: 'bg-orange-500',
     strategy: 'bg-purple-500',
     error: 'bg-destructive',
+  };
+
+  // icons for each category
+  const categoryIcons: Record<string, React.ReactNode> = {
+    offense: <Sword className="w-4 h-4" />,
+    defense: <Shield className="w-4 h-4" />,
+    timing: <Clock className="w-4 h-4" />,
+    distance: <Move className="w-4 h-4" />,
+    strategy: <Target className="w-4 h-4" />,
+    error: <AlertTriangle className="w-4 h-4" />,
   };
 
   const formatTimestamp = (seconds: number) => {
@@ -63,9 +122,38 @@ const Review = () => {
         <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="flex-1">
-          <h1 className="font-semibold">vs {video.opponent}</h1>
-          <p className="text-xs text-muted-foreground">{video.date}</p>
+        <div className="flex-1 min-w-0">
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={videoName}
+                onChange={(e) => setVideoName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveName();
+                  if (e.key === 'Escape') handleCancelNameEdit();
+                }}
+                className="h-8 text-sm"
+                placeholder="Enter video name"
+                autoFocus
+              />
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSaveName}>
+                <Check className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCancelNameEdit}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <h1 className="font-semibold truncate">{videoName}</h1>
+                <p className="text-xs text-muted-foreground">vs {video.opponent} • {video.date}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => setIsEditingName(true)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -75,6 +163,7 @@ const Review = () => {
           annotations={video.annotations}
           videoUrl={video.videoUrl}
           onTimeUpdate={setCurrentTime}
+          onDurationChange={setVideoDuration}
         />
 
         <AnnotationLegend compact />
@@ -97,23 +186,33 @@ const Review = () => {
                     <div className="flex items-start gap-3">
                       <div className={`w-1 h-full rounded-full ${categoryColors[annotation.category.toLowerCase()] || 'bg-primary'}`} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <Badge variant="outline" className="text-xs">
                             {formatTimestamp(annotation.time)}
                           </Badge>
-                          <Badge variant="secondary" className="text-xs capitalize">
+                          <Badge variant="secondary" className="text-xs capitalize flex items-center gap-1">
+                            {categoryIcons[annotation.category.toLowerCase()]}
                             {annotation.category}
                           </Badge>
                         </div>
                         <p className="text-sm">{annotation.text}</p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteAnnotation(annotation.id)}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditAnnotation(annotation)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteAnnotation(annotation.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -132,9 +231,12 @@ const Review = () => {
 
       <AnnotationDialog
         open={showAnnotationDialog}
-        onOpenChange={setShowAnnotationDialog}
+        onOpenChange={handleDialogClose}
         currentTime={currentTime}
-        onSave={handleAddAnnotation}
+        videoDuration={videoDuration}
+        existingAnnotations={video.annotations.map(a => ({ time: a.time, id: a.id }))}
+        onSave={handleSaveAnnotation}
+        initialData={editingAnnotation || undefined}
       />
     </div>
   );

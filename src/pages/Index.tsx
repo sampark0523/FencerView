@@ -11,7 +11,8 @@ const Index = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const { addVideo } = useVideo();
+  const { addVideo, getAllVideos } = useVideo();
+  const allVideos = getAllVideos();
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -19,58 +20,86 @@ const Index = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // make sure they picked a video file
-      if (!file.type.startsWith('video/')) {
-        toast.error('Please select a video file');
-        return;
-      }
+    if (!file) return;
 
-      // show upload progress
-      setIsUploading(true);
-      toast.loading(`Uploading: ${file.name}`);
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
 
-      // simulate upload with a delay
-      setTimeout(() => {
-        // save video and get the id back
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      toast.error('Please select a video file', {
+        description: `Selected file type: ${file.type || 'unknown'}`
+      });
+      return;
+    }
+
+    // Validate file size (500MB limit)
+    const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('File too large', {
+        description: `Maximum file size is 500MB. Your file is ${Math.round(file.size / 1024 / 1024)}MB.`
+      });
+      return;
+    }
+
+    // Check for empty file
+    if (file.size === 0) {
+      toast.error('Invalid video file', {
+        description: 'The selected file is empty.'
+      });
+      return;
+    }
+
+    // Show upload progress
+    setIsUploading(true);
+    const toastId = toast.loading(`Uploading: ${file.name}`, {
+      description: 'Processing video...'
+    });
+
+    // Simulate upload with a delay
+    setTimeout(() => {
+      try {
+        // Save video and get the id back
         const videoId = addVideo(file, 'New Opponent');
 
         setIsUploading(false);
-        toast.dismiss();
-        toast.success(`Uploaded: ${file.name}`);
+        toast.dismiss(toastId);
+        toast.success(`Uploaded: ${file.name}`, {
+          description: 'Video ready for analysis'
+        });
 
-        // send them to the review page
+        // Send them to the review page
         navigate(`/review/${videoId}`);
-      }, 1500);
-    }
+      } catch (error) {
+        setIsUploading(false);
+        toast.dismiss(toastId);
+        toast.error('Upload failed', {
+          description: error instanceof Error ? error.message : 'An unexpected error occurred'
+        });
+      }
+    }, 1500);
   };
 
-  const recentBouts = [
-    {
-      id: "1",
-      opponent: "Marcus Chen",
-      date: "Mar 15, 2025",
-      score: "15-12",
-      duration: "8:24",
-      touches: 27,
-    },
-    {
-      id: "2",
-      opponent: "David Rodriguez",
-      date: "Mar 8, 2025",
-      score: "12-15",
-      duration: "7:58",
-      touches: 27,
-    },
-    {
-      id: "3",
-      opponent: "James Park",
-      date: "Mar 1, 2025",
-      score: "15-10",
-      duration: "6:42",
-      touches: 25,
-    },
-  ];
+  // Get 3 most recent bouts (sorted by ID, which is timestamp for user uploads)
+  const recentBouts = allVideos
+    .sort((a, b) => b.id.localeCompare(a.id))
+    .slice(0, 3)
+    .map(video => {
+      const durationMins = Math.floor((video.touches[video.touches.length - 1]?.time || 0) / 60);
+      const durationSecs = Math.floor((video.touches[video.touches.length - 1]?.time || 0) % 60);
+      const yourTouches = video.touches.filter(t => t.scorer === 'you').length;
+      const opponentTouches = video.touches.filter(t => t.scorer === 'opponent').length;
+
+      return {
+        id: video.id,
+        name: video.name,
+        opponent: video.opponent,
+        date: video.date,
+        score: `${yourTouches}-${opponentTouches}`,
+        duration: `${durationMins}:${durationSecs.toString().padStart(2, '0')}`,
+        touches: video.touches.length,
+      };
+    });
 
   return (
     <div className="min-h-screen bg-background pb-24">

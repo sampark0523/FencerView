@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Play, Pause, SkipBack, SkipForward, Loader2 } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Loader2, AlertTriangle } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
 interface Touch {
@@ -23,6 +23,7 @@ interface VideoPlayerProps {
   isUploading?: boolean;
   uploadProgress?: number;
   onTimeUpdate?: (time: number) => void;
+  onDurationChange?: (duration: number) => void;
 }
 
 export const VideoPlayer = ({
@@ -31,12 +32,15 @@ export const VideoPlayer = ({
   videoUrl,
   isUploading = false,
   uploadProgress = 0,
-  onTimeUpdate
+  onTimeUpdate,
+  onDurationChange
 }: VideoPlayerProps) => {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(180);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // colors for each annotation category
@@ -61,16 +65,63 @@ export const VideoPlayer = ({
         onTimeUpdate(time);
       }
     };
-    const handleDurationChange = () => setDuration(video.duration);
+    const handleDurationChange = () => {
+      setDuration(video.duration);
+      if (onDurationChange) {
+        onDurationChange(video.duration);
+      }
+    };
     const handleWaiting = () => setIsBuffering(true);
     const handleCanPlay = () => setIsBuffering(false);
-    const handlePlaying = () => setIsBuffering(false);
+    const handlePlaying = () => {
+      setIsBuffering(false);
+      setPlaying(true);
+    };
+    const handlePause = () => setPlaying(false);
+    const handleEnded = () => {
+      setPlaying(false);
+      // Reset to beginning when video ends
+      video.currentTime = 0;
+    };
+    const handleError = () => {
+      setHasError(true);
+      setIsBuffering(false);
+      setPlaying(false);
+
+      const error = video.error;
+      if (error) {
+        switch (error.code) {
+          case error.MEDIA_ERR_ABORTED:
+            setErrorMessage('Video loading was aborted');
+            break;
+          case error.MEDIA_ERR_NETWORK:
+            setErrorMessage('Network error while loading video');
+            break;
+          case error.MEDIA_ERR_DECODE:
+            setErrorMessage('Video file is corrupted or unsupported format');
+            break;
+          case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            setErrorMessage('Video format not supported by your browser');
+            break;
+          default:
+            setErrorMessage('An unknown error occurred');
+        }
+      }
+    };
+    const handleLoadStart = () => {
+      setHasError(false);
+      setErrorMessage('');
+    };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('durationchange', handleDurationChange);
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('playing', handlePlaying);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+    video.addEventListener('loadstart', handleLoadStart);
 
     // cleanup on unmount
     return () => {
@@ -79,8 +130,12 @@ export const VideoPlayer = ({
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('playing', handlePlaying);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
+      video.removeEventListener('loadstart', handleLoadStart);
     };
-  }, [onTimeUpdate]);
+  }, [onTimeUpdate, onDurationChange]);
 
   const togglePlayPause = () => {
     const video = videoRef.current;
@@ -89,9 +144,12 @@ export const VideoPlayer = ({
     if (playing) {
       video.pause();
     } else {
-      video.play();
+      video.play().catch(err => {
+        console.error('Error playing video:', err);
+        setPlaying(false);
+      });
     }
-    setPlaying(!playing);
+    // State will be updated by event listeners
   };
 
   // skip back 5 seconds
@@ -111,14 +169,19 @@ export const VideoPlayer = ({
   const seekToTime = (time: number) => {
     const video = videoRef.current;
     if (!video) return;
-    video.currentTime = time;
+
+    // Clamp time to valid range [0, duration]
+    const clampedTime = Math.max(0, Math.min(time, duration));
+    video.currentTime = clampedTime;
   };
 
   // click anywhere on timeline to jump there
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (hasError || !videoUrl) return; // Don't allow seeking if there's an error or no video
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
+    const percentage = Math.max(0, Math.min(1, x / rect.width)); // Clamp percentage to [0, 1]
     const time = percentage * duration;
     seekToTime(time);
   };
@@ -132,6 +195,18 @@ export const VideoPlayer = ({
 
   // show different overlays based on video state
   const renderVideoContent = () => {
+    if (hasError) {
+      return (
+        <div className="absolute inset-0 bg-black/90 flex items-center justify-center">
+          <div className="text-center px-6 max-w-md">
+            <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-destructive" />
+            <p className="text-lg font-semibold mb-2">Video Error</p>
+            <p className="text-sm text-muted-foreground">{errorMessage}</p>
+          </div>
+        </div>
+      );
+    }
+
     if (isUploading) {
       return (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
@@ -191,50 +266,82 @@ export const VideoPlayer = ({
       </div>
 
       <div className="p-4 bg-card/50">
-        <div className="relative h-2 bg-secondary rounded-full mb-4 cursor-pointer" onClick={handleTimelineClick}>
+        <div className="relative h-8 mb-4">
           <div
-            className="absolute h-full bg-primary rounded-full transition-all"
-            style={{ width: `${(currentTime / duration) * 100}%` }}
-          />
-
-          {touches.map((touch, idx) => (
-            <button
-              key={`touch-${idx}`}
-              className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 transition-transform hover:scale-125 ${
-                touch.scorer === 'you' ? 'bg-primary border-primary' : 'bg-destructive border-destructive'
-              }`}
-              style={{ left: `${(touch.time / duration) * 100}%` }}
-              onClick={(e) => {
-                e.stopPropagation();
-                seekToTime(touch.time);
-              }}
+            className="absolute top-1/2 -translate-y-1/2 h-2 w-full bg-secondary rounded-full cursor-pointer"
+            onClick={handleTimelineClick}
+          >
+            <div
+              className="absolute h-full bg-primary rounded-full transition-all"
+              style={{ width: `${(currentTime / duration) * 100}%` }}
             />
-          ))}
+          </div>
 
-          {annotations.map((annotation, idx) => (
-            <button
-              key={`annotation-${idx}`}
-              className={`absolute top-1/2 -translate-y-1/2 w-2 h-4 rounded-sm transition-transform hover:scale-125 ${
-                categoryColors[annotation.category.toLowerCase()] || 'bg-primary'
-              }`}
-              style={{ left: `${(annotation.time / duration) * 100}%` }}
-              onClick={(e) => {
-                e.stopPropagation();
-                seekToTime(annotation.time);
-              }}
-              title={annotation.text}
-            />
-          ))}
+          {touches.map((touch, idx) => {
+            // Calculate vertical offset to prevent overlap
+            const position = (touch.time / duration) * 100;
+            const overlappingTouches = touches.filter((t, i) => {
+              const tPos = (t.time / duration) * 100;
+              return i < idx && Math.abs(tPos - position) < 2; // Within 2% of timeline
+            });
+            const verticalOffset = overlappingTouches.length * 8; // 8px per overlapping marker
+
+            return (
+              <button
+                key={`touch-${idx}`}
+                className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 transition-transform hover:scale-150 hover:z-10 ${
+                  touch.scorer === 'you' ? 'bg-primary border-primary' : 'bg-destructive border-destructive'
+                }`}
+                style={{
+                  left: `${position}%`,
+                  transform: `translate(-50%, calc(-50% - ${verticalOffset}px))`
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  seekToTime(touch.time);
+                }}
+                title={`${touch.scorer === 'you' ? 'Your' : "Opponent's"} touch at ${formatTime(touch.time)}`}
+              />
+            );
+          })}
+
+          {annotations.map((annotation, idx) => {
+            // Calculate vertical offset to prevent overlap
+            const position = (annotation.time / duration) * 100;
+            const overlappingAnnotations = annotations.filter((a, i) => {
+              const aPos = (a.time / duration) * 100;
+              return i < idx && Math.abs(aPos - position) < 1.5; // Within 1.5% of timeline
+            });
+            const verticalOffset = overlappingAnnotations.length * 10; // 10px per overlapping marker
+
+            return (
+              <button
+                key={`annotation-${idx}`}
+                className={`absolute top-1/2 -translate-y-1/2 w-2 h-5 rounded-sm transition-all hover:scale-150 hover:z-10 ${
+                  categoryColors[annotation.category.toLowerCase()] || 'bg-primary'
+                }`}
+                style={{
+                  left: `${position}%`,
+                  transform: `translate(-50%, calc(-50% + ${verticalOffset}px))`
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  seekToTime(annotation.time);
+                }}
+                title={`${annotation.category}: ${annotation.text}`}
+              />
+            );
+          })}
         </div>
 
         <div className="flex items-center justify-center gap-4">
-          <Button variant="ghost" size="icon" onClick={skipBackward} disabled={!videoUrl}>
+          <Button variant="ghost" size="icon" onClick={skipBackward} disabled={!videoUrl || hasError}>
             <SkipBack className="w-5 h-5" />
           </Button>
-          <Button size="icon" className="w-12 h-12" onClick={togglePlayPause} disabled={!videoUrl || isUploading}>
+          <Button size="icon" className="w-12 h-12" onClick={togglePlayPause} disabled={!videoUrl || isUploading || hasError}>
             {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={skipForward} disabled={!videoUrl}>
+          <Button variant="ghost" size="icon" onClick={skipForward} disabled={!videoUrl || hasError}>
             <SkipForward className="w-5 h-5" />
           </Button>
         </div>

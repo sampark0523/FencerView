@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 
 interface BoutCardProps {
   id: string;
+  name?: string;
   opponent: string;
   date: string;
   score: string;
@@ -12,16 +13,18 @@ interface BoutCardProps {
   onClick: () => void;
 }
 
-export const BoutCard = ({ opponent, date, score, duration, touches, onClick }: BoutCardProps) => {
+export const BoutCard = ({ name, opponent, date, score, duration, touches, onClick }: BoutCardProps) => {
   return (
-    <Card 
+    <Card
       className="p-5 hover:shadow-glow transition-all cursor-pointer bg-gradient-card border-border/50 active:scale-[0.98]"
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-4">
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg mb-1">vs {opponent}</h3>
-          <p className="text-sm text-muted-foreground">{date}</p>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-lg mb-1 truncate">{name || `vs ${opponent}`}</h3>
+          <p className="text-sm text-muted-foreground">
+            {name ? `vs ${opponent} • ` : ''}{date}
+          </p>
         </div>
         <div className="text-right">
           <Badge variant="outline" className="text-primary border-primary text-base px-3 py-1">
