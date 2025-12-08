@@ -24,16 +24,29 @@ interface BoutVideo {
   }>;
 }
 
+interface Touch {
+  time: number;
+  scorer: 'you' | 'opponent';
+  type: string;
+}
+
 interface VideoContextType {
   videos: Record<string, BoutVideo>;
-  addVideo: (file: File, opponent: string, name?: string) => string;
+  customCompetitions: string[];
+  addVideo: (file: File, opponent: string, name?: string, competition?: string) => string;
   getVideo: (id: string) => BoutVideo | undefined;
   getAllVideos: () => BoutVideo[];
+  getAllCompetitions: () => string[];
   removeVideo: (id: string) => void;
   updateVideo: (id: string, updates: Partial<BoutVideo>) => void;
   addAnnotation: (videoId: string, annotation: Omit<Annotation, 'id' | 'createdAt'>) => void;
   updateAnnotation: (videoId: string, annotationId: string, updates: Partial<Annotation>) => void;
   deleteAnnotation: (videoId: string, annotationId: string) => void;
+  addTouch: (videoId: string, touch: Touch) => void;
+  updateTouch: (videoId: string, touchIndex: number, updates: Partial<Touch>) => void;
+  deleteTouch: (videoId: string, touchIndex: number) => void;
+  addCompetition: (name: string) => boolean;
+  removeCompetition: (name: string) => void;
 }
 
 const VideoContext = createContext<VideoContextType | undefined>(undefined);
@@ -141,8 +154,9 @@ const createDemoVideos = (): Record<string, BoutVideo> => {
 
 export const VideoProvider = ({ children }: { children: ReactNode }) => {
   const [videos, setVideos] = useState<Record<string, BoutVideo>>(() => createDemoVideos());
+  const [customCompetitions, setCustomCompetitions] = useState<string[]>([]);
 
-  const addVideo = (file: File, opponent: string = 'Unknown Opponent', name?: string): string => {
+  const addVideo = (file: File, opponent: string = 'Unknown Opponent', name?: string, competition?: string): string => {
     const id = Date.now().toString();
     const videoUrl = URL.createObjectURL(file);
     const newVideo: BoutVideo = {
@@ -152,7 +166,7 @@ export const VideoProvider = ({ children }: { children: ReactNode }) => {
       videoUrl,
       opponent,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      competition: 'Uncategorized', // Default to Uncategorized
+      competition: competition || 'Uncategorized',
       annotations: [],
       touches: [],
     };
@@ -167,6 +181,16 @@ export const VideoProvider = ({ children }: { children: ReactNode }) => {
 
   const getAllVideos = (): BoutVideo[] => {
     return Object.values(videos);
+  };
+
+  const getAllCompetitions = (): string[] => {
+    const predefined = [
+      'Uncategorized',
+      'Regional Championship',
+      'Spring Open',
+      'Winter Invitational',
+    ];
+    return [...predefined, ...customCompetitions];
   };
 
   const removeVideo = (id: string) => {
@@ -268,18 +292,101 @@ export const VideoProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const addTouch = (videoId: string, touch: Touch) => {
+    setVideos(prev => {
+      const video = prev[videoId];
+      if (!video) return prev;
+
+      const newTouches = [...video.touches, touch].sort((a, b) => a.time - b.time);
+
+      return {
+        ...prev,
+        [videoId]: {
+          ...video,
+          touches: newTouches,
+        },
+      };
+    });
+  };
+
+  const updateTouch = (videoId: string, touchIndex: number, updates: Partial<Touch>) => {
+    setVideos(prev => {
+      const video = prev[videoId];
+      if (!video || touchIndex < 0 || touchIndex >= video.touches.length) return prev;
+
+      const newTouches = video.touches.map((touch, idx) =>
+        idx === touchIndex ? { ...touch, ...updates } : touch
+      );
+
+      return {
+        ...prev,
+        [videoId]: {
+          ...video,
+          touches: newTouches,
+        },
+      };
+    });
+  };
+
+  const deleteTouch = (videoId: string, touchIndex: number) => {
+    setVideos(prev => {
+      const video = prev[videoId];
+      if (!video || touchIndex < 0 || touchIndex >= video.touches.length) return prev;
+
+      return {
+        ...prev,
+        [videoId]: {
+          ...video,
+          touches: video.touches.filter((_, idx) => idx !== touchIndex),
+        },
+      };
+    });
+  };
+
+  const addCompetition = (name: string): boolean => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return false;
+
+    // Check if competition already exists (case-insensitive)
+    const existingCompetitions = [
+      'Uncategorized',
+      'Regional Championship',
+      'Spring Open',
+      'Winter Invitational',
+      ...customCompetitions
+    ];
+
+    if (existingCompetitions.some(c => c.toLowerCase() === trimmedName.toLowerCase())) {
+      return false;
+    }
+
+    setCustomCompetitions(prev => [...prev, trimmedName]);
+    return true;
+  };
+
+  const removeCompetition = (name: string) => {
+    setCustomCompetitions(prev => prev.filter(c => c !== name));
+  };
+
   return (
     <VideoContext.Provider
       value={{
         videos,
+        customCompetitions,
         addVideo,
         getVideo,
         getAllVideos,
+        getAllCompetitions,
         removeVideo,
         updateVideo,
         addAnnotation,
         updateAnnotation,
         deleteAnnotation,
+        addTouch,
+        updateTouch,
+        deleteTouch,
+        addCompetition,
+        removeCompetition,
       }}
     >
       {children}

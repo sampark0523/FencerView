@@ -2,19 +2,20 @@ import { Button } from "@/components/ui/button";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { AnnotationLegend } from "@/components/AnnotationLegend";
 import { AnnotationDialog } from "@/components/AnnotationDialog";
-import { ArrowLeft, Plus, Trash2, Edit, Sword, Shield, Clock, Move, Target, AlertTriangle, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit, Sword, Shield, Clock, Move, Target, AlertTriangle, Check, X, User, Users } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useVideo } from "@/contexts/VideoContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useEffect } from "react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const Review = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { getVideo, addAnnotation, updateAnnotation, deleteAnnotation, updateVideo } = useVideo();
+  const { getVideo, addAnnotation, updateAnnotation, deleteAnnotation, updateVideo, addTouch, updateTouch, deleteTouch } = useVideo();
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [showAnnotationDialog, setShowAnnotationDialog] = useState(false);
@@ -26,6 +27,7 @@ const Review = () => {
     category: string;
     text: string;
   } | null>(null);
+  const seekRef = useRef<((time: number) => void) | null>(null);
 
   const video = getVideo(id || '');
 
@@ -90,6 +92,36 @@ const Review = () => {
     setIsEditingName(false);
   };
 
+  const handleAddTouch = (scorer: 'you' | 'opponent') => {
+    if (!video) return;
+    addTouch(video.id, {
+      time: currentTime,
+      scorer,
+      type: 'touché'
+    });
+    toast.success(`Point added for ${scorer === 'you' ? 'You' : 'Opponent'} at ${formatTimestamp(currentTime)}`);
+  };
+
+  const handleToggleScorer = (touchIndex: number) => {
+    if (!video) return;
+    const touch = video.touches[touchIndex];
+    if (!touch) return;
+    const newScorer = touch.scorer === 'you' ? 'opponent' : 'you';
+    updateTouch(video.id, touchIndex, { scorer: newScorer });
+  };
+
+  const handleDeleteTouch = (touchIndex: number) => {
+    if (!video) return;
+    deleteTouch(video.id, touchIndex);
+    toast.success('Point removed');
+  };
+
+  const handleSeekToTime = (time: number) => {
+    if (seekRef.current) {
+      seekRef.current(time);
+    }
+  };
+
   // color for annotation sidebar
   const categoryColors: Record<string, string> = {
     offense: 'bg-primary',
@@ -97,7 +129,7 @@ const Review = () => {
     timing: 'bg-yellow-500',
     distance: 'bg-orange-500',
     strategy: 'bg-purple-500',
-    error: 'bg-destructive',
+    error: 'bg-pink-600',
   };
 
   // icons for each category
@@ -164,9 +196,77 @@ const Review = () => {
           videoUrl={video.videoUrl}
           onTimeUpdate={setCurrentTime}
           onDurationChange={setVideoDuration}
+          seekRef={seekRef}
         />
 
         <AnnotationLegend compact />
+
+        {/* Scoring Section */}
+        <Card className="p-4 bg-card border-border/50">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">Score</h3>
+            <div className="flex items-center gap-2">
+              <Badge className="text-lg px-3 py-1 bg-green-600 hover:bg-green-600">
+                {video.touches.filter(t => t.scorer === 'you').length}
+              </Badge>
+              <span className="text-muted-foreground">-</span>
+              <Badge variant="destructive" className="text-lg px-3 py-1">
+                {video.touches.filter(t => t.scorer === 'opponent').length}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-4">
+            <Button
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => handleAddTouch('you')}
+            >
+              <User className="w-4 h-4 mr-2" />
+              Your Point
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => handleAddTouch('opponent')}
+            >
+              <Users className="w-4 h-4 mr-2" />
+              Opponent Point
+            </Button>
+          </div>
+
+          {video.touches.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">
+                Tap a point to change who scored, or delete it
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {video.touches.map((touch, idx) => (
+                  <div key={idx} className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleToggleScorer(idx)}
+                      className={cn(
+                        "px-2 py-1 rounded text-xs font-medium transition-colors",
+                        touch.scorer === 'you'
+                          ? "bg-green-600 text-white hover:bg-green-700"
+                          : "bg-destructive text-destructive-foreground hover:bg-destructive/80"
+                      )}
+                      title={`${touch.scorer === 'you' ? 'Your' : "Opponent's"} point at ${formatTimestamp(touch.time)} - Click to switch`}
+                    >
+                      {formatTimestamp(touch.time)}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTouch(idx)}
+                      className="p-1 rounded hover:bg-muted transition-colors"
+                      title="Delete point"
+                    >
+                      <X className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
 
         <Button onClick={() => setShowAnnotationDialog(true)} className="w-full">
           <Plus className="w-4 h-4 mr-2" />
@@ -182,9 +282,13 @@ const Review = () => {
               {video.annotations
                 .sort((a, b) => a.time - b.time)
                 .map((annotation) => (
-                  <Card key={annotation.id} className="p-4 bg-card border-border/50">
+                  <Card
+                    key={annotation.id}
+                    className="p-4 bg-card border-border/50 cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => handleSeekToTime(annotation.time)}
+                  >
                     <div className="flex items-start gap-3">
-                      <div className={`w-1 h-full rounded-full ${categoryColors[annotation.category.toLowerCase()] || 'bg-primary'}`} />
+                      <div className={`w-1 self-stretch rounded-full ${categoryColors[annotation.category.toLowerCase()] || 'bg-primary'}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <Badge variant="outline" className="text-xs">
@@ -201,14 +305,20 @@ const Review = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleEditAnnotation(annotation)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditAnnotation(annotation);
+                          }}
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDeleteAnnotation(annotation.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAnnotation(annotation.id);
+                          }}
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>

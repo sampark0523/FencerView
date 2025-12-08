@@ -1,21 +1,68 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { BoutCard } from "@/components/BoutCard";
-import { Upload, Video, Loader2 } from "lucide-react";
+import { Upload, Video, Loader2, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useRef, useState } from "react";
 import { useVideo } from "@/contexts/VideoContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const Index = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const { addVideo, getAllVideos } = useVideo();
+  const [selectedCompetition, setSelectedCompetition] = useState("Uncategorized");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newCompetitionName, setNewCompetitionName] = useState("");
+  const { addVideo, getAllVideos, getAllCompetitions, addCompetition } = useVideo();
   const allVideos = getAllVideos();
+  const competitions = getAllCompetitions();
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleCompetitionChange = (value: string) => {
+    if (value === "__create_new__") {
+      setIsCreateDialogOpen(true);
+    } else {
+      setSelectedCompetition(value);
+    }
+  };
+
+  const handleCreateCompetition = () => {
+    const trimmedName = newCompetitionName.trim();
+    if (!trimmedName) {
+      toast.error("Please enter a competition name");
+      return;
+    }
+
+    const success = addCompetition(trimmedName);
+    if (success) {
+      toast.success(`Created "${trimmedName}"`);
+      setSelectedCompetition(trimmedName);
+      setNewCompetitionName("");
+      setIsCreateDialogOpen(false);
+    } else {
+      toast.error("A competition with this name already exists");
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,12 +107,12 @@ const Index = () => {
     setTimeout(() => {
       try {
         // Save video and get the id back
-        const videoId = addVideo(file, 'New Opponent');
+        const videoId = addVideo(file, 'New Opponent', undefined, selectedCompetition);
 
         setIsUploading(false);
         toast.dismiss(toastId);
         toast.success(`Uploaded: ${file.name}`, {
-          description: 'Video ready for analysis'
+          description: `Added to ${selectedCompetition}`
         });
 
         // Send them to the review page
@@ -116,29 +163,59 @@ const Index = () => {
       </header>
 
       <div className="px-4 pt-6 space-y-6">
-        <Card
-          className={`p-6 bg-gradient-card border-border/50 transition-all ${
-            isUploading ? "opacity-75" : "cursor-pointer hover:bg-accent/50"
-          }`}
-          onClick={isUploading ? undefined : handleUploadClick}
-        >
+        <Card className="p-6 bg-gradient-card border-border/50">
           <div className="flex flex-col items-center text-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
-              {isUploading ? (
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              ) : (
-                <Upload className="w-8 h-8 text-primary" />
-              )}
+            <div
+              className={`w-full flex flex-col items-center gap-3 transition-all ${
+                isUploading ? "opacity-75" : "cursor-pointer"
+              }`}
+              onClick={isUploading ? undefined : handleUploadClick}
+            >
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
+                {isUploading ? (
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                ) : (
+                  <Upload className="w-8 h-8 text-primary" />
+                )}
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg mb-1">
+                  {isUploading ? "Uploading..." : "Upload New Bout"}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {isUploading
+                    ? "Please wait while we process your video"
+                    : "Tap to select a video from your device"}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-semibold text-lg mb-1">
-                {isUploading ? "Uploading..." : "Upload New Bout"}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {isUploading
-                  ? "Please wait while we process your video"
-                  : "Tap to select a video from your device"}
-              </p>
+
+            <div className="w-full pt-3 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+              <label className="text-xs text-muted-foreground mb-1.5 block">
+                Add to Competition
+              </label>
+              <Select
+                value={selectedCompetition}
+                onValueChange={handleCompetitionChange}
+                disabled={isUploading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select competition" />
+                </SelectTrigger>
+                <SelectContent>
+                  {competitions.map((comp) => (
+                    <SelectItem key={comp} value={comp}>
+                      {comp}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__create_new__" className="text-primary">
+                    <span className="flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Create new competition...
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <input
@@ -164,6 +241,39 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create Competition</DialogTitle>
+            <DialogDescription>
+              Add a new competition to organize your bouts.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="new-competition-name">Competition Name</Label>
+              <Input
+                id="new-competition-name"
+                placeholder="e.g., Summer Nationals 2025"
+                value={newCompetitionName}
+                onChange={(e) => setNewCompetitionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateCompetition();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCompetition}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

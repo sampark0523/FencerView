@@ -1,4 +1,4 @@
-import { Home, Library } from "lucide-react";
+import { Home, Library, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +7,7 @@ const BottomNav = () => {
 
   const navItems = [
     { icon: Home, label: "Home", path: "/" },
+    { icon: MessageSquare, label: "Annotations", path: "/annotations" },
     { icon: Library, label: "Library", path: "/library" },
   ];
 
@@ -21,7 +22,7 @@ const BottomNav = () => {
               key={path}
               to={path}
               className={cn(
-                "flex flex-col items-center gap-1 px-6 py-2 rounded-lg transition-all",
+                "flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all",
                 isActive
                   ? "text-primary bg-primary/10"
                   : "text-muted-foreground hover:text-foreground hover:bg-accent/50"

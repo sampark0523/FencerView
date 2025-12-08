@@ -1,10 +1,22 @@
 import { BoutCard } from "@/components/BoutCard";
-import { Video, ChevronRight, Search } from "lucide-react";
+import { Video, ChevronRight, Search, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useVideo } from "@/contexts/VideoContext";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 interface Competition {
   id: string;
@@ -28,7 +40,9 @@ const Library = () => {
   const [draggedVideoId, setDraggedVideoId] = useState<string | null>(null);
   const [dropTargetCompetition, setDropTargetCompetition] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const { getAllVideos, updateVideo } = useVideo();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newCompetitionName, setNewCompetitionName] = useState("");
+  const { getAllVideos, updateVideo, customCompetitions, addCompetition } = useVideo();
 
   const allVideos = getAllVideos();
 
@@ -37,7 +51,8 @@ const Library = () => {
     'Uncategorized',
     'Regional Championship',
     'Spring Open',
-    'Winter Invitational'
+    'Winter Invitational',
+    ...customCompetitions
   ];
 
   // Group videos by competition
@@ -177,19 +192,77 @@ const Library = () => {
 
   const totalBouts = competitions.reduce((acc, comp) => acc + comp.boutCount, 0);
 
+  const handleCreateCompetition = () => {
+    const trimmedName = newCompetitionName.trim();
+    if (!trimmedName) {
+      toast.error("Please enter a competition name");
+      return;
+    }
+
+    const success = addCompetition(trimmedName);
+    if (success) {
+      toast.success(`Created "${trimmedName}"`);
+      setNewCompetitionName("");
+      setIsCreateDialogOpen(false);
+    } else {
+      toast.error("A competition with this name already exists");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="px-4 py-3 sticky top-0 bg-background/95 backdrop-blur-sm border-b border-border z-10">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-            <Video className="w-6 h-6 text-primary-foreground" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+              <Video className="w-6 h-6 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">Library</h1>
+              <p className="text-xs text-muted-foreground">
+                {totalBouts} bouts across {competitions.length} competitions
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold">Library</h1>
-            <p className="text-xs text-muted-foreground">
-              {totalBouts} bouts across {competitions.length} competitions
-            </p>
-          </div>
+
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1">
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create Competition</DialogTitle>
+                <DialogDescription>
+                  Add a new competition to organize your bouts. You can drag and drop bouts into this competition later.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="competition-name">Competition Name</Label>
+                  <Input
+                    id="competition-name"
+                    placeholder="e.g., Summer Nationals 2025"
+                    value={newCompetitionName}
+                    onChange={(e) => setNewCompetitionName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleCreateCompetition();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateCompetition}>Create</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="relative mb-2">

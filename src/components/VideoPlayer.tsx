@@ -24,6 +24,7 @@ interface VideoPlayerProps {
   uploadProgress?: number;
   onTimeUpdate?: (time: number) => void;
   onDurationChange?: (duration: number) => void;
+  seekRef?: React.MutableRefObject<((time: number) => void) | null>;
 }
 
 export const VideoPlayer = ({
@@ -33,7 +34,8 @@ export const VideoPlayer = ({
   isUploading = false,
   uploadProgress = 0,
   onTimeUpdate,
-  onDurationChange
+  onDurationChange,
+  seekRef
 }: VideoPlayerProps) => {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -50,7 +52,7 @@ export const VideoPlayer = ({
     timing: 'bg-yellow-500',
     distance: 'bg-orange-500',
     strategy: 'bg-purple-500',
-    error: 'bg-destructive',
+    error: 'bg-pink-600',
   };
 
   // hook up all the video event listeners
@@ -175,6 +177,18 @@ export const VideoPlayer = ({
     video.currentTime = clampedTime;
   };
 
+  // Expose seekToTime via ref
+  useEffect(() => {
+    if (seekRef) {
+      seekRef.current = seekToTime;
+    }
+    return () => {
+      if (seekRef) {
+        seekRef.current = null;
+      }
+    };
+  }, [seekRef, duration]);
+
   // click anywhere on timeline to jump there
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (hasError || !videoUrl) return; // Don't allow seeking if there's an error or no video
@@ -290,7 +304,7 @@ export const VideoPlayer = ({
               <button
                 key={`touch-${idx}`}
                 className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 transition-transform hover:scale-150 hover:z-10 ${
-                  touch.scorer === 'you' ? 'bg-primary border-primary' : 'bg-destructive border-destructive'
+                  touch.scorer === 'you' ? 'bg-green-600 border-green-600' : 'bg-destructive border-destructive'
                 }`}
                 style={{
                   left: `${position}%`,

@@ -7,6 +7,7 @@ import { VideoProvider } from "./contexts/VideoContext";
 import Index from "./pages/Index";
 import Review from "./pages/Review";
 import Library from "./pages/Library";
+import Annotations from "./pages/Annotations";
 import Welcome from "./pages/Welcome";
 import StyleGuide from "./pages/StyleGuide";
 import NotFound from "./pages/NotFound";
@@ -24,6 +25,7 @@ const AppContent = () => {
         <Route path="/welcome" element={<Welcome />} />
         <Route path="/styles" element={<StyleGuide />} />
         <Route path="/" element={<Index />} />
+        <Route path="/annotations" element={<Annotations />} />
         <Route path="/library" element={<Library />} />
         <Route path="/review/:id" element={<Review />} />
         <Route path="*" element={<NotFound />} />

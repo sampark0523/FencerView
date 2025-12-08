@@ -46,7 +46,7 @@ export const AnnotationLegend = ({ compact = false }: AnnotationLegendProps) => 
     },
     {
       name: "Error",
-      color: "bg-destructive",
+      color: "bg-pink-600",
       description: "Mistakes to address",
       icon: AlertTriangle,
     },
